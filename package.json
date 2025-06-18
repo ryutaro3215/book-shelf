@@ -1,0 +1,21 @@
+{
+  "name": "book-registration-app",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "src/frontend",
+    "src/backend"
+  ],
+  "scripts": {
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev": "concurrently -n frontend,backend -c blue,green \"pnpm dev:frontend\" \"pnpm dev:backend\""
+  },
+  "devDependencies": {
+    "@vitest/ui": "^3.2.4",
+    "concurrently": "^8.2.2",
+    "happy-dom": "^18.0.1",
+    "supertest": "^7.1.1",
+    "vitest": "^3.2.4"
+  }
+}
