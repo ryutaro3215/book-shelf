@@ -1,19 +1,35 @@
 import { Hono, Context } from "hono";
+import { setCookie } from "hono/cookie";
 import {
   SupabaseEnv,
   getSupabase,
   supabaseMiddleware,
 } from "@/lib/supabaseClient";
-import { z } from "zod";
+import { UserSchema } from "@/schema";
 
-const UserSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
+// const UserSchema = z.object({
+//   name: z.string().min(1, "Name is required"),
+//   email: z.string().email("Invalid email address"),
+//   password: z.string().min(6, "Password must be at least 6 characters"),
+// });
 
 const users = new Hono<{ Bindings: SupabaseEnv }>();
 users.use("*", supabaseMiddleware());
+
+users.get("/check-auth", async (c: Context) => {
+  //Accessing the supabase client from the Hono context
+  const supabase = getSupabase(c);
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    return c.json({ error: "No user is currently logged in" }, 400);
+  }
+  return c.json(
+    {
+      message: "User is authenticated and logged in",
+    },
+    200,
+  );
+});
 
 users.post("/register", async (c: Context) => {
   const req = await c.req.json();
@@ -95,21 +111,22 @@ users.post("/login", async (c: Context) => {
     .select("*")
     .eq("id", data.user?.id)
     .single();
-  console.log("userData", userData);
-  console.log("fetchError", fetchError);
   if (fetchError) {
     return c.json({ error: `Fetch user error: ${fetchError.message}` }, 400);
   }
 
   //return success response
-  return c.json({
-    message: `${userData.name} logged in successfully`,
-    user: {
-      id: userData.id,
-      name: userData.name,
-      email: userData.email,
+  return c.json(
+    {
+      message: `${userData.name} logged in successfully`,
+      user: {
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+      },
     },
-  });
+    201,
+  );
 });
 
 users.get("/logout", async (c: Context) => {
@@ -123,9 +140,11 @@ users.get("/logout", async (c: Context) => {
   if (error) {
     return c.json({ error: `Logout error: ${error.message}` }, 400);
   }
-  return c.json({ message: "Logout successfully" });
+  return c.json({ message: "Logout successfully" }, 200);
 });
 
+//To complete the user update functionality, we have to confirm URL in email. You can check it
+//in localhost:54324 which is the supabase local development Inbucket
 users.post("/update", async (c: Context) => {
   const req = await c.req.json();
   //validate request body
@@ -151,8 +170,8 @@ users.post("/update", async (c: Context) => {
 
   const supabase = getSupabase(c);
   //Fetch the current user
-  const currentUser = await supabase.auth.getUser();
-  if (!currentUser.data.user) {
+  const { data: currentUser, error } = await supabase.auth.getUser();
+  if (!currentUser || error) {
     return c.json({ error: "No user is currently logged in" }, 400);
   }
   const { data, error: authError } = await supabase.auth.updateUser({
@@ -196,7 +215,7 @@ users.get("/profile", async (c: Context) => {
   const supabase = getSupabase(c);
   const { data, error } = await supabase.auth.getUser();
   if (error) {
-    return c.json({ error: `Failed to auth user data: ${error}` }, 400);
+    return c.json({ error: `User is not login: ${error}` }, 400);
   }
   //Fetch user data from the users table
   const { data: userData, error: fetchError } = await supabase
@@ -218,6 +237,43 @@ users.get("/profile", async (c: Context) => {
       name: userData.name,
       email: userData.email,
     },
+  });
+});
+
+users.delete("/delete", async (c: Context) => {
+  const supabase = getSupabase(c);
+  const adminSupabase = c.get("adminSupabase");
+  const { data: currentUser, error } = await supabase.auth.getUser();
+  if (!currentUser || error) {
+    return c.json({ error: "No user is currently logged in" }, 400);
+  }
+  const userId = currentUser.user?.id;
+  //Delete user data from the users table
+  const { error: deleteUserError } = await supabase
+    .from("users")
+    .delete()
+    .eq("id", userId);
+  if (deleteUserError) {
+    return c.json(
+      {
+        error: `Failed to delete user from users table: ${deleteUserError.message}`,
+      },
+      400,
+    );
+  }
+  //delete user from auth
+  const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(
+    currentUser.user?.id,
+  );
+  if (deleteError) {
+    return c.json(
+      { error: `Failed to delete user from auth: ${deleteError.message}` },
+      400,
+    );
+  }
+
+  return c.json({
+    message: "User deleted successfully",
   });
 });
 

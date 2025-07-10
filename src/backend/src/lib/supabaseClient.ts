@@ -1,5 +1,5 @@
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { SupabaseClient, createClient } from "@supabase/supabase-js";
 import type { Context, MiddlewareHandler } from "hono";
 import { env } from "hono/adapter";
 import { setCookie } from "hono/cookie";
@@ -7,6 +7,7 @@ import { setCookie } from "hono/cookie";
 declare module "hono" {
   interface ContextVariableMap {
     supabase: SupabaseClient;
+    adminSupabase: SupabaseClient;
   }
 }
 
@@ -14,26 +15,27 @@ export const getSupabase = (c: Context) => {
   return c.get("supabase");
 };
 
+export const getAdminSupabase = (c: Context) => {
+  return c.get("adminSupabase");
+};
+
 export type SupabaseEnv = {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
 };
 
 export const supabaseMiddleware = (): MiddlewareHandler => {
   return async (c, next) => {
     const supabaseEnv = env<SupabaseEnv>(c);
-    const supabaseUrl = supabaseEnv.SUPABASE_URL;
-    const supabaseAnonKey = supabaseEnv.SUPABASE_ANON_KEY;
+    const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } =
+      supabaseEnv;
 
-    if (!supabaseUrl) {
-      throw new Error("SUPABASE_URL missing!");
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Missing Supabase environment variables");
     }
 
-    if (!supabaseAnonKey) {
-      throw new Error("SUPABASE_ANON_KEY missing!");
-    }
-
-    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       cookies: {
         getAll() {
           return parseCookieHeader(c.req.header("Cookie") ?? "").map(
@@ -51,7 +53,10 @@ export const supabaseMiddleware = (): MiddlewareHandler => {
       },
     });
 
+    const adminSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
     c.set("supabase", supabase);
+    c.set("adminSupabase", adminSupabase);
 
     await next();
   };
