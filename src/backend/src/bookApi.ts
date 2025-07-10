@@ -24,7 +24,7 @@ export const fetchBooksData = async (
     .join("&");
 
   const maxResults = 40; // Maximum results per request
-  const apiKey = "AIzaSyCSQEKfWFEbWD_GQxvyNnpomESK8R8WwdM";
+  const apiKey = process.env.API_KEY;
   const apiUrl = `https://www.googleapis.com/books/v1/volumes?${qParam}&startIndex=${startIndex}&maxResults=${maxResults}&orderBy=newest&key=${apiKey}`;
 
   const response = await fetch(apiUrl);
